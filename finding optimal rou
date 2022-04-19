@@ -1,0 +1,52 @@
+clc
+clear
+%% Grid graph generation
+n = 8;
+N=n^2;
+A = delsq(numgrid('S',n+2));
+G = graph(A,'omitselfloops');
+A=adjacency(G);
+A=full(A);
+G=graph(A);
+h = plot(G);
+h.XData = floor((0:N-1)/8);
+h.YData = rem((0:N-1), 8);
+axis equal;
+% Edges
+E= G.Edges;
+E=table2array(E);
+E=E(:,1:2);
+%% Sensors data
+a=randi([0,100],1,N);
+ave_true=1/N*sum(a);
+%% Asynchronous ADMM
+e=10^(-12);
+c = 0.5:0.1:3;
+t=zeros(1,length(c));
+for m=1:length(c)
+    x_asy = a';
+    z = normrnd(20,5,N,N);
+    miu = normrnd(0,1,N,N);
+while(norm(x_asy-ave_true*ones(N,1),2)>e)
+    i = randi([1,length(E(:,1))],1,1);
+    p=E(i,1);
+    q=E(i,2);
+   % Neighbors of node i
+   J1 = neighbors(G,p);
+   % Neighbors of node j
+   J2 = neighbors(G,q);
+   % x update
+        x_asy(p) = (a(p)+(c(m)*sum(z(p,J1))-sum(miu(p,J1))))/(1+c(m)*length(J1));
+        x_asy(q) = (a(q)+(c(m)*sum(z(q,J2))-sum(miu(q,J2))))/(1+c(m)*length(J2));
+   % z update
+        z(p,q) = 1/2*(1/c(m)*(miu(p,q)+miu(q,p))+x_asy(p)+x_asy(q));
+        z(q,p) = z(p,q);
+   % miu update
+        miu(p,q) = miu(p,q)+c(m)*(x_asy(p)-z(p,q));
+        miu(q,p) = miu(q,p)+c(m)*(x_asy(q)-z(q,p));
+   % error
+    t(m)=t(m)+1;
+    
+end
+end
+plot(c,t)
