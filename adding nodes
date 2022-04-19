@@ -1,0 +1,297 @@
+clc
+clear
+%% Grid graph generation
+n = 8;
+N=n^2;
+A = delsq(numgrid('S',n+2));
+G = graph(A,'omitselfloops');
+A=adjacency(G);
+A=full(A);
+G=graph(A);
+h = plot(G);
+h.XData = floor((0:N-1)/8);
+h.YData = rem((0:N-1), 8);
+axis equal;
+% Edges
+E= G.Edges;
+E=table2array(E);
+E=E(:,1:2);
+%% Sensors data
+a=randi([0,100],1,N);
+ave_true=1/N*sum(a);
+%% Randomized gossip
+% find optimal P matrix
+one=ones(N,1);
+I=eye(N);
+nod=1:N;
+cvx_begin
+    variable P(N,N)
+    variable s
+    expression Wb
+    minimize(s)    
+    subject to  
+    % Nonnegative P
+    for i=1:N
+        for j=1:N
+            P(i,j)>=0;
+        end
+    end    
+    % P(i,j)=0 (i,j) not connected
+    for i=1:N
+        i_neighbor = neighbors(G,i)';
+        % nodes that are not neighbors of node i
+        diff = setdiff(nod,i_neighbor);
+        P(i,diff) == 0;
+    end
+    %Sum of probability 
+    for i=1:N
+        sum(P(i,:))==1;
+    end
+    %Wb 
+    for i=1:N
+        for j=1:N
+            if i~=j
+                Wb(i,j)=(P(i,j)+P(j,i))/(2*N);    
+            else
+                Wb(i,j)=1-(sum(P(i,:))+sum(P(:,i)))/(2*N);
+            end
+        end
+    end
+    % semidefinite
+    s*I-Wb+(one*one')/N == semidefinite(N) ;
+cvx_end
+
+P=full(P);
+Wb=full(Wb);
+% iterations
+x=a';
+k=500;
+e0=zeros(1,k);
+i=randi([1,N],1,k);
+for v=1:k
+   p=find(P(i(v),:)~=0);
+   prob=P(i(v),p);
+   % choose a node with probability with Pji
+   j = randsample(p, 1, true, prob);
+   % generate Wk matrix
+   W=I-(1/2)*(I(:,i(v))-I(:,j))*(I(:,i(v))-I(:,j))';
+   x=W*x;
+   e0(v)=norm(x-ave_true*ones(N,1),2);
+end
+
+%% Asynchronous ADMM
+x_asy = a';
+% z = ones(N,N)*1;
+z = normrnd(20,5,N,N);
+miu = normrnd(0,1,N,N);
+c = 1.1;
+e2 = zeros(1,k);
+i = randi([1,length(E(:,1))],1,k);
+
+for v=1:k
+    p=E(i(v),1);
+    q=E(i(v),2);
+   % Neighbors of node i
+   J1 = neighbors(G,p);
+   % Neighbors of node j
+   J2 = neighbors(G,q);
+   % x update
+        x_asy(p) = (a(p)+(c*sum(z(p,J1))-sum(miu(p,J1))))/(1+c*length(J1));
+        x_asy(q) = (a(q)+(c*sum(z(q,J2))-sum(miu(q,J2))))/(1+c*length(J2));
+   % z update
+        z(p,q) = 1/2*(1/c*(miu(p,q)+miu(q,p))+x_asy(p)+x_asy(q));
+        z(q,p) = z(p,q);
+   % miu update
+        miu(p,q) = miu(p,q)+c*(x_asy(p)-z(p,q));
+        miu(q,p) = miu(q,p)+c*(x_asy(q)-z(q,p));
+   % error
+    e2(v)=norm(x_asy-ave_true*ones(N,1),2);
+end
+%% Add nodes(10*10 grid)
+n = 10;
+N=n^2;
+A = delsq(numgrid('S',n+2));
+G = graph(A,'omitselfloops');
+xx=zeros(100,1);
+xxas=zeros(100,1);
+zz=zeros(100,100);
+mm=zeros(100,100);
+xx(12:19)=x(1:8);
+xx(22:29)=x(9:16);
+xx(32:39)=x(17:24);
+xx(42:49)=x(25:32);
+xx(52:59)=x(33:40);
+xx(62:69)=x(41:48);
+xx(72:79)=x(49:56);
+xx(82:89)=x(57:64);
+%
+xxas(12:19)=x_asy(1:8);
+xxas(22:29)=x_asy(9:16);
+xxas(32:39)=x_asy(17:24);
+xxas(42:49)=x_asy(25:32);
+xxas(52:59)=x_asy(33:40);
+xxas(62:69)=x_asy(41:48);
+xxas(72:79)=x_asy(49:56);
+xxas(82:89)=x_asy(57:64);
+%
+for i=1:8
+zz(12:19,i+1)=z(1:8,i);
+zz(22:29,i+1)=z(9:16,i);
+zz(32:39,i+1)=z(17:24,i);
+zz(42:49,i+1)=z(25:32,i);
+zz(52:59,i+1)=z(33:40,i);
+zz(62:69,i+1)=z(41:48,i);
+zz(72:79,i+1)=z(49:56,i);
+zz(82:89,i+1)=z(57:64,i);
+end
+%
+for i=1:8
+zz(i+1,12:19)=z(i,1:8);
+zz(i+1,22:29)=z(i,9:16);
+zz(i+1,32:39)=z(i,17:24);
+zz(i+1,42:49)=z(i,25:32);
+zz(i+1,52:59)=z(i,33:40);
+zz(i+1,62:69)=z(i,41:48);
+zz(i+1,72:79)=z(i,49:56);
+zz(i+1,82:89)=z(i,57:64);
+end
+%
+for i=1:8
+mm(12:19,i+1)=miu(1:8,i);
+mm(22:29,i+1)=miu(9:16,i);
+mm(32:39,i+1)=miu(17:24,i);
+mm(42:49,i+1)=miu(25:32,i);
+mm(52:59,i+1)=miu(33:40,i);
+mm(62:69,i+1)=miu(41:48,i);
+mm(72:79,i+1)=miu(49:56,i);
+mm(82:89,i+1)=miu(57:64,i);
+end
+%
+for i=1:8
+mm(i+1,12:19)=miu(i,1:8);
+mm(i+1,22:29)=miu(i,9:16);
+mm(i+1,32:39)=miu(i,17:24);
+mm(i+1,42:49)=miu(i,25:32);
+mm(i+1,52:59)=miu(i,33:40);
+mm(i+1,62:69)=miu(i,41:48);
+mm(i+1,72:79)=miu(i,49:56);
+mm(i+1,82:89)=miu(i,57:64);
+end
+%
+A=adjacency(G);
+A=full(A);
+G=graph(A);
+h = plot(G);
+h.XData = floor((0:N-1)/8);
+h.YData = rem((0:N-1), 8);
+axis equal;
+% Edges
+E= G.Edges;
+E=table2array(E);
+E=E(:,1:2);
+%% Sensors data
+aa=randi([0,100],1,N);
+aa(12:19)=a(1:8);
+aa(22:29)=a(9:16);
+aa(32:39)=a(17:24);
+aa(42:49)=a(25:32);
+aa(52:59)=a(33:40);
+aa(62:69)=a(41:48);
+aa(72:79)=a(49:56);
+aa(82:89)=a(57:64);
+ave_true=1/N*sum(aa);
+%% Randomized gossip
+% find optimal P matrix
+one=ones(N,1);
+I=eye(N);
+nod=1:N;
+cvx_begin
+    variable P(N,N)
+    variable s
+    expression Wb
+    minimize(s)    
+    subject to  
+    % Nonnegative P
+    for i=1:N
+        for j=1:N
+            P(i,j)>=0;
+        end
+    end    
+    % P(i,j)=0 (i,j) not connected
+    for i=1:N
+        i_neighbor = neighbors(G,i)';
+        % nodes that are not neighbors of node i
+        diff = setdiff(nod,i_neighbor);
+        P(i,diff) == 0;
+    end
+    %Sum of probability 
+    for i=1:N
+        sum(P(i,:))==1;
+    end
+    %Wb 
+    for i=1:N
+        for j=1:N
+            if i~=j
+                Wb(i,j)=(P(i,j)+P(j,i))/(2*N);    
+            else
+                Wb(i,j)=1-(sum(P(i,:))+sum(P(:,i)))/(2*N);
+            end
+        end
+    end
+    % semidefinite
+    s*I-Wb+(one*one')/N == semidefinite(N) ;
+cvx_end
+
+P=full(P);
+Wb=full(Wb);
+% iterations
+k=100000;
+e00=zeros(1,k);
+i=randi([1,N],1,k);
+xx=aa';
+for v=501:k
+   p=find(P(i(v),:)~=0);
+   prob=P(i(v),p);
+   % choose a node with probability with Pji
+   j = randsample(p, 1, true, prob);
+   % generate Wk matrix
+   W=I-(1/2)*(I(:,i(v))-I(:,j))*(I(:,i(v))-I(:,j))';
+   xx=W*xx;
+   e0(v)=norm(xx-ave_true*ones(N,1),2);
+end
+
+%% Asynchronous ADMM
+c = 1.1;
+e22 = zeros(1,k);
+i = randi([1,length(E(:,1))],1,k);
+
+for v=501:k
+    p=E(i(v),1);
+    q=E(i(v),2);
+   % Neighbors of node i
+   J1 = neighbors(G,p);
+   % Neighbors of node j
+   J2 = neighbors(G,q);
+   % x update
+        xxas(p) = (aa(p)+(c*sum(zz(p,J1))-sum(mm(p,J1))))/(1+c*length(J1));
+        xxas(q) = (aa(q)+(c*sum(zz(q,J2))-sum(mm(q,J2))))/(1+c*length(J2));
+   % z update
+        zz(p,q) = 1/2*(1/c*(mm(p,q)+mm(q,p))+xxas(p)+xxas(q));
+        zz(q,p) = zz(p,q);
+   % miu update
+        mm(p,q) = mm(p,q)+c*(xxas(p)-zz(p,q));
+        mm(q,p) = mm(q,p)+c*(xxas(q)-zz(q,p));
+   % error
+    e2(v)=norm(xxas-ave_true*ones(N,1),2);
+end
+plot(e0);
+hold on
+plot(e2);
+% hold on
+% plot(e00);
+% hold on
+% plot(e22);
+legend('random gossip','asynchronous ADMM','random gossip with nodes added','asynchronous ADMM with nodes added')
+xlabel('transmissions ') 
+ylabel('||e||') 
+set(gca,'yscale','log');
