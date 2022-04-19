@@ -1,0 +1,219 @@
+clc
+clear
+%% Grid graph generation
+n = 8;
+N=n^2;
+A = delsq(numgrid('S',n+2));
+G = graph(A,'omitselfloops');
+A=adjacency(G);
+A=full(A);
+G=graph(A);
+h = plot(G);
+h.XData = floor((0:N-1)/8);
+h.YData = rem((0:N-1), 8);
+axis equal;
+% Edges
+E= G.Edges;
+E=table2array(E);
+E=E(:,1:2);
+%% Sensors data
+a=randi([0,100],1,N);
+ave_true=1/N*sum(a);
+%% Randomized gossip
+% find optimal P matrix
+one=ones(N,1);
+I=eye(N);
+nod=1:N;
+cvx_begin
+    variable P(N,N)
+    variable s
+    expression Wb
+    minimize(s)    
+    subject to  
+    % Nonnegative P
+    for i=1:N
+        for j=1:N
+            P(i,j)>=0;
+        end
+    end    
+    % P(i,j)=0 (i,j) not connected
+    for i=1:N
+        i_neighbor = neighbors(G,i)';
+        % nodes that are not neighbors of node i
+        diff = setdiff(nod,i_neighbor);
+        P(i,diff) == 0;
+    end
+    %Sum of probability 
+    for i=1:N
+        sum(P(i,:))==1;
+    end
+    %Wb 
+    for i=1:N
+        for j=1:N
+            if i~=j
+                Wb(i,j)=(P(i,j)+P(j,i))/(2*N);    
+            else
+                Wb(i,j)=1-(sum(P(i,:))+sum(P(:,i)))/(2*N);
+            end
+        end
+    end
+    % semidefinite
+    s*I-Wb+(one*one')/N == semidefinite(N) ;
+cvx_end
+
+P=full(P);
+Wb=full(Wb);
+% iterations
+x=a';
+k=100000;
+e0=zeros(1,k);
+i=randi([1,N],1,k);
+for v=1:k
+   p=find(P(i(v),:)~=0);
+   prob=P(i(v),p);
+   % choose a node with probability with Pji
+   j = randsample(p, 1, true, prob);
+   % generate Wk matrix
+   W=I-(1/2)*(I(:,i(v))-I(:,j))*(I(:,i(v))-I(:,j))';
+   x=W*x;
+   e0(v)=norm(x-ave_true*ones(N,1),2);
+end
+%% Synchronous ADMM
+% e1=zeros(1,k);
+% transmission2=0;
+% x_admm=zeros(N,1);
+% z=ones(N,N);
+% miu=ones(N,N);
+% c=1.7;
+% for i=1:k
+% % x update
+% for q=1:N
+%     J=neighbors(G,q);
+%     x_admm(q)=(a(q)+(c*sum(z(q,J))-sum(miu(q,J))))/(1+c*length(J));
+%     transmission2=transmission2+1;
+%     e1(transmission2)=norm(x_admm-ave_true*ones(N,1),2);
+% end
+% % z update
+% for q=1:N
+%     J=neighbors(G,q);
+% for w=1:N
+%     if ismember(w,J)==1
+%     z(q,w)=(1/2)*(1/c*(miu(q,w)+miu(w,q))+x_admm(q)+x_admm(w));
+%     end
+% end
+% end
+% % miu update
+% for q=1:N
+%     J=neighbors(G,q);
+% for w=1:N
+%     if ismember(w,J)==1
+%     miu(q,w)=miu(q,w)+c*(x_admm(q)-z(q,w));
+%     end
+% end
+% end
+% end
+%% Asynchronous ADMM
+x_asy = a';
+% z = ones(N,N)*1;
+z = normrnd(20,5,N,N);
+miu = normrnd(0,1,N,N);
+c = 1.1;
+e2 = zeros(1,k);
+i = randi([1,length(E(:,1))],1,k);
+
+for v=1:k
+    p=E(i(v),1);
+    q=E(i(v),2);
+   % Neighbors of node i
+   J1 = neighbors(G,p);
+   % Neighbors of node j
+   J2 = neighbors(G,q);
+   % x update
+        x_asy(p) = (a(p)+(c*sum(z(p,J1))-sum(miu(p,J1))))/(1+c*length(J1));
+        x_asy(q) = (a(q)+(c*sum(z(q,J2))-sum(miu(q,J2))))/(1+c*length(J2));
+   % z update
+        z(p,q) = 1/2*(1/c*(miu(p,q)+miu(q,p))+x_asy(p)+x_asy(q));
+        z(q,p) = z(p,q);
+   % miu update
+        miu(p,q) = miu(p,q)+c*(x_asy(p)-z(p,q));
+        miu(q,p) = miu(q,p)+c*(x_asy(q)-z(q,p));
+   % error
+    e2(v)=norm(x_asy-ave_true*ones(N,1),2);
+end
+%% random gossip with failure
+x = a';
+e00 = zeros(1,k);
+i = randi([1,64],1,k);
+for v=1:k
+   p_randomgossip=rand();
+   if p_randomgossip>=0.4
+      p=find(P(i(v),:)~=0);
+      prob=P(i(v),p);
+      % choose a node with probability with Pji
+      j = randsample(p, 1, true, prob);
+      % generate Wk matrix
+      W = I-(1/2)*(I(:,i(v))-I(:,j))*(I(:,i(v))-I(:,j))';
+      x = W*x;
+   end
+   e00(v)=norm(x-ave_true*ones(N,1),2);
+end
+%% Asynchronous ADMM with failure
+x_asy = a';
+z = normrnd(20,5,N,N);
+mu = normrnd(0,1,N,N);
+c = 1.1;
+e22 = zeros(1,k);
+i = randi([1,112],1,k);
+
+for v=1:k
+    p=E(i(v),1);
+    q=E(i(v),2);
+   % Neighbors of node i
+   J1 = neighbors(G,p);
+   % Neighbors of node j
+   J2 = neighbors(G,q);
+   % x update
+    px=rand();
+    if px>=0.4
+        x_asy(p) = (a(p)+(c*sum(z(p,J1))-sum(mu(p,J1))))/(1+c*length(J1));
+        x_asy(q) = (a(q)+(c*sum(z(q,J2))-sum(mu(q,J2))))/(1+c*length(J2));
+    else
+        x_asy(p) = x_asy(p);
+        x_asy(q)=x_asy(q);
+    end
+   % z update
+    pz=rand();
+    if pz>=0.4
+        z(p,q) = 1/2*(1/c*(mu(p,q)+mu(q,p))+x_asy(p)+x_asy(q));
+        z(q,p) = z(p,q);
+    else
+        z(p,q) = z(p,q);
+        z(q,p) = z(q,p);
+    end
+   % miu update
+    pmiu=rand();
+    if pmiu>=0.4
+        mu(p,q) = mu(p,q)+c*(x_asy(p)-z(p,q));
+        mu(q,p) = mu(q,p)+c*(x_asy(q)-z(q,p));
+    else
+        mu(p,q) = mu(p,q);
+        mu(q,p) = mu(q,p);
+    end
+   % error
+    e22(v)=norm(x_asy-ave_true*ones(N,1),2);
+end
+% plot(e0)
+% hold on
+% plot(e1)
+% hold on
+% plot(e2)
+% hold on
+plot(e00)
+hold on
+plot(e22)
+% legend('randomized gossip','synchronous ADMM','asynchronous ADMM');
+% legend('random gossip','asynchronous ADMM','random gossip with transfer failure','asynchronous ADMM with transfer failre');
+legend('randomized gossip','asynchronous ADMM');
+xlabel('transmissions ') ;
+ylabel('||e||') ;
+set(gca,'yscale','log');
