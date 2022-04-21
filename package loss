@@ -114,9 +114,8 @@ end
 % end
 %% Asynchronous ADMM
 x_asy = a';
-% z = ones(N,N)*1;
-z = normrnd(20,5,N,N);
-miu = normrnd(0,1,N,N);
+z = ones(N,N);
+miu = ones(N,N);
 c = 1.1;
 e2 = zeros(1,k);
 i = randi([1,length(E(:,1))],1,k);
@@ -159,8 +158,8 @@ for v=1:k
 end
 %% Asynchronous ADMM with failure
 x_asy = a';
-z = normrnd(20,5,N,N);
-mu = normrnd(0,1,N,N);
+z = ones(N,N);
+mu = ones(N,N);
 c = 1.1;
 e22 = zeros(1,k);
 i = randi([1,112],1,k);
