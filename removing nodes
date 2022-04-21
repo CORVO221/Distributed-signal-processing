@@ -81,9 +81,8 @@ end
 
 %% Asynchronous ADMM
 x_asy = a';
-% z = ones(N,N)*1;
-z = normrnd(20,5,N,N);
-miu = normrnd(0,1,N,N);
+z = ones(N,N);
+miu =ones(N,N);
 c = 1.1;
 e2 = zeros(1,20000);
 i = randi([1,length(E(:,1))],1,k);
