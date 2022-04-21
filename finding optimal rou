@@ -25,8 +25,8 @@ c = 0.5:0.1:3;
 t=zeros(1,length(c));
 for m=1:length(c)
     x_asy = a';
-    z = normrnd(20,5,N,N);
-    miu = normrnd(0,1,N,N);
+    z = ones(N,N);
+    miu = ones(N,N);
 while(norm(x_asy-ave_true*ones(N,1),2)>e)
     i = randi([1,length(E(:,1))],1,1);
     p=E(i,1);
