@@ -65,7 +65,7 @@ P=full(P);
 Wb=full(Wb);
 % iterations
 x=a';
-k=500;
+k=50;
 e0=zeros(1,20000);
 i=randi([1,N],1,k);
 for v=1:k
@@ -179,7 +179,7 @@ Wb=full(Wb);
 k=99500;
 i=randi([1,N1],1,k);
 x=a';
-for v=501:20000
+for v=51:20000
    p=find(P(i(v),:)~=0);
    prob=P(i(v),p);
    % choose a node with probability with Pji
@@ -195,7 +195,7 @@ c = 1.1;
 e22 = zeros(1,k);
 i = randi([1,length(E1(:,1))],1,20000);
 
-for v=501:20000
+for v=51:20000
     p=E1(i(v),1);
     q=E1(i(v),2);
    % Neighbors of node i
